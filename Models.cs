@@ -93,4 +93,14 @@ namespace ScheduleAnalyzer
         /// </summary>
         public Dictionary<string, bool> RoomFree { get; set; } = new Dictionary<string, bool>();
     }
+
+    public class ExamSession
+    {
+        public string Subject { get; set; }
+        public List<string> Courses { get; set; }
+        public DateTime Date { get; set; }
+        public int Period { get; set; }
+        public string Room { get; set; }
+    }
+
 }

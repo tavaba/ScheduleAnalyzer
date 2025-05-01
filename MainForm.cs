@@ -48,6 +48,21 @@ namespace ScheduleAnalyzer
                 var sessions = TimetableReader.ReadSchedule(input);
                 var subjectEndDates = TimetableProcessor.GetSubjectEndDates(sessions);
                 var freeSlots = TimetableProcessor.GetFreeTimeSlots(sessions);
+
+                // Lấy ngày bắt đầu và kết thúc thi từ giao diện
+                DateTime examStartDate = dtpExamStartDate.Value.Date;
+                DateTime examEndDate = dtpExamEndDate.Value.Date;
+
+                if (examEndDate < examStartDate)
+                {
+                    MessageBox.Show("Ngày kết thúc không được sớm hơn ngày bắt đầu.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // Gọi hàm tạo lịch thi
+                TimetableProcessor.GenerateExamSchedule(examStartDate, examEndDate, sessions, subjectEndDates, freeSlots);
+
+
                 TimetableWriter.WriteResults(output, subjectEndDates, freeSlots);
                 MessageBox.Show("Phân tích hoàn tất!");
             }
