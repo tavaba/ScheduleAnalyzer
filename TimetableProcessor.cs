@@ -121,97 +121,105 @@ namespace ScheduleAnalyzer
             DateTime examStartDate,
             DateTime examEndDate,
             List<ClassSession> sessions,
-            Dictionary<string, DateTime> subjectEndDates,
-            Dictionary<string, HashSet<(DateTime, int)>> freeSlots)
+            List<SubjectEndDate> subjectEndDates,
+            List<FreeTimeSlot> freeSlots)
         {
-            var examSchedule = new List<ExamSession>();
+            var result = new List<ExamSession>();
 
-            // 1. Nhóm các khóa học theo môn học
-            var subjectToCourses = sessions
-                .GroupBy(s => s.Subject)
-                .ToDictionary(g => g.Key, g => g.Select(s => s.Course).Distinct().ToList());
+            // Bước 1: Xác định danh sách tất cả các khóa học và phòng học
+            var allCourses = sessions.SelectMany(s => s.CourseCodes).Distinct().ToList();
+            var allRooms = sessions.SelectMany(s => s.Lessons).Select(l => l.Room).Distinct().ToList();
 
-            // 2. Danh sách phòng học
-            var allRooms = sessions.Select(s => s.Room).Distinct().ToList();
-
-            // 3. Danh sách môn học cần thi
-            var subjects = subjectToCourses.Keys
-                .OrderBy(sub => subjectEndDates.ContainsKey(sub) ? subjectEndDates[sub] : DateTime.MaxValue)
+            // Bước 2: Xây dựng danh sách các ngày thi hợp lệ (từ thứ Hai đến thứ Sáu)
+            var examDates = Enumerable.Range(0, (examEndDate - examStartDate).Days + 1)
+                .Select(offset => examStartDate.AddDays(offset))
+                .Where(d => d.DayOfWeek >= DayOfWeek.Monday && d.DayOfWeek <= DayOfWeek.Friday)
                 .ToList();
 
-            var usedSlots = new HashSet<(DateTime, int, string)>(); // (Ngày, Nhóm tiết, Phòng)
-            var courseExamDays = new Dictionary<string, HashSet<DateTime>>(); // khóa học → ngày đã thi
+            // Bước 3: Xây dựng danh sách các nhóm tiết (PeriodGroup: 1 -> 5)
+            var periodGroups = Enumerable.Range(1, 5).ToList();
 
-            foreach (var subject in subjects)
+            // Bước 4: Mở rộng freeSlots đến hết ngày thi (giả sử các ngày mới là trống hoàn toàn)
+            var existingDates = freeSlots.Select(f => f.Date).Distinct().ToHashSet();
+
+            foreach (var date in examDates)
             {
-                if (!subjectEndDates.ContainsKey(subject))
-                    continue;
-
-                DateTime lastClass = subjectEndDates[subject];
-                DateTime earliestExamDate = lastClass.AddDays(2);
-                if (earliestExamDate < examStartDate)
-                    earliestExamDate = examStartDate;
-
-                var courses = subjectToCourses[subject];
-
-                bool scheduled = false;
-
-                for (DateTime date = earliestExamDate; date <= examEndDate; date = date.AddDays(1))
+                if (!existingDates.Contains(date))
                 {
-                    // Bỏ qua thứ 7, chủ nhật
-                    if (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday)
-                        continue;
-
-                    for (int period = 1; period <= 4; period++)
+                    foreach (var period in periodGroups)
                     {
-                        foreach (var room in allRooms)
+                        var newSlot = new FreeTimeSlot
                         {
-                            var slotKey = (date, period, room);
-                            if (usedSlots.Contains(slotKey))
-                                continue;
-
-                            // Kiểm tra phòng có rảnh không
-                            if (!freeSlots.ContainsKey(room) || !freeSlots[room].Contains((date, period)))
-                                continue;
-
-                            // Kiểm tra các khóa học có rảnh không tại thời điểm này
-                            bool allCoursesAvailable = courses.All(course =>
-                                freeSlots.ContainsKey(course) && freeSlots[course].Contains((date, period)) &&
-                                (!courseExamDays.ContainsKey(course) || !courseExamDays[course].Contains(date))
-                            );
-
-                            if (!allCoursesAvailable)
-                                continue;
-
-                            // Ghi nhận kết quả
-                            examSchedule.Add(new ExamSession
-                            {
-                                Subject = subject,
-                                Courses = courses,
-                                Date = date,
-                                Period = period,
-                                Room = room
-                            });
-
-                            usedSlots.Add(slotKey);
-                            foreach (var course in courses)
-                            {
-                                if (!courseExamDays.ContainsKey(course))
-                                    courseExamDays[course] = new HashSet<DateTime>();
-                                courseExamDays[course].Add(date);
-                            }
-
-                            scheduled = true;
-                            break;
-                        }
-                        if (scheduled) break;
+                            Date = date,
+                            PeriodGroup = period,
+                            CourseFree = allCourses.ToDictionary(c => c, c => true),
+                            RoomFree = allRooms.ToDictionary(r => r, r => true)
+                        };
+                        freeSlots.Add(newSlot);
                     }
-                    if (scheduled) break;
                 }
             }
 
-            return examSchedule;
+            // Bước 5: Sắp xếp danh sách môn học theo ngày kết thúc
+            var sortedSubjects = subjectEndDates.OrderBy(s => s.EndDate).ToList();
+
+            foreach (var subject in sortedSubjects)
+            {
+                var relatedClass = sessions.FirstOrDefault(c => c.SubjectName == subject.SubjectName);
+                if (relatedClass == null) continue;
+
+                var validExamStartDate = subject.EndDate.AddDays(2);
+
+                var possibleSlots = freeSlots
+                    .Where(f =>
+                        f.Date >= validExamStartDate &&
+                        f.Date >= examStartDate &&
+                        f.Date <= examEndDate &&
+                        f.Date.DayOfWeek != DayOfWeek.Saturday &&
+                        f.Date.DayOfWeek != DayOfWeek.Sunday)
+                    .OrderBy(f => f.Date)
+                    .ThenBy(f => f.PeriodGroup)
+                    .ToList();
+
+                bool scheduled = false;
+
+                foreach (var slot in possibleSlots)
+                {
+                    bool allCoursesFree = relatedClass.CourseCodes.All(c => slot.CourseFree.ContainsKey(c) && slot.CourseFree[c]);
+                    var availableRoom = slot.RoomFree.FirstOrDefault(r => r.Value);
+
+                    if (allCoursesFree && !string.IsNullOrEmpty(availableRoom.Key))
+                    {
+                        // Đánh dấu đã dùng
+                        foreach (var c in relatedClass.CourseCodes)
+                            slot.CourseFree[c] = false;
+
+                        slot.RoomFree[availableRoom.Key] = false;
+
+                        // Thêm phiên thi
+                        result.Add(new ExamSession
+                        {
+                            Subject = subject.SubjectName,
+                            Courses = new List<string>(relatedClass.CourseCodes),
+                            Date = slot.Date,
+                            Period = slot.PeriodGroup,
+                            Room = availableRoom.Key
+                        });
+
+                        scheduled = true;
+                        break;
+                    }
+                }
+
+                if (!scheduled)
+                {
+                    throw new Exception($"Không thể xếp lịch thi cho môn '{subject.SubjectName}'.");
+                }
+            }
+
+            return result;
         }
+
 
         //Kiểm tra tiết có trùng nhóm không
         private static bool IsLessonOverlappingPeriodGroup(Lesson lesson, int group)

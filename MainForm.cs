@@ -52,7 +52,6 @@ namespace ScheduleAnalyzer
                 // Lấy ngày bắt đầu và kết thúc thi từ giao diện
                 DateTime examStartDate = dtpExamStartDate.Value.Date;
                 DateTime examEndDate = dtpExamEndDate.Value.Date;
-
                 if (examEndDate < examStartDate)
                 {
                     MessageBox.Show("Ngày kết thúc không được sớm hơn ngày bắt đầu.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -60,10 +59,10 @@ namespace ScheduleAnalyzer
                 }
 
                 // Gọi hàm tạo lịch thi
-                TimetableProcessor.GenerateExamSchedule(examStartDate, examEndDate, sessions, subjectEndDates, freeSlots);
+                var examSessions = TimetableProcessor.GenerateExamSchedule(examStartDate, examEndDate, sessions, subjectEndDates, freeSlots);
 
 
-                TimetableWriter.WriteResults(output, subjectEndDates, freeSlots);
+                TimetableWriter.WriteResults(output, subjectEndDates, freeSlots, examSessions);
                 MessageBox.Show("Phân tích hoàn tất!");
             }
             catch (Exception ex)

@@ -9,11 +9,12 @@ namespace ScheduleAnalyzer
 {
     public class TimetableWriter
     {
-        public static void WriteResults(string outputFile, List<SubjectEndDate> subjectEndDates, List<FreeTimeSlot> freeTimeSlots)
+        public static void WriteResults(string outputFile, List<SubjectEndDate> subjectEndDates, List<FreeTimeSlot> freeTimeSlots, List<ExamSession> examSessions)
         {
             IWorkbook workbook = new XSSFWorkbook();
             WriteSheet1(workbook, subjectEndDates);
             WriteSheet2(workbook, freeTimeSlots);
+            WriteSheet3(workbook, examSessions); // Gọi hàm xuất lịch thi
             using (FileStream fs = new FileStream(outputFile, FileMode.Create, FileAccess.Write))
             {
                 workbook.Write(fs);
@@ -109,6 +110,44 @@ namespace ScheduleAnalyzer
                 sheet.AddMergedRegion(new NPOI.SS.Util.CellRangeAddress(startRow, rowIdx - 1, 0, 0));
                 sheet.AddMergedRegion(new NPOI.SS.Util.CellRangeAddress(startRow, rowIdx - 1, 1, 1));
             }
+        }
+
+        private static void WriteSheet3(IWorkbook workbook, List<ExamSession> examSessions)
+        {
+            ISheet sheet = workbook.CreateSheet("Lịch thi");
+
+            // Tạo style định dạng ngày
+            ICellStyle dateStyle = workbook.CreateCellStyle();
+            short dateFormat = workbook.CreateDataFormat().GetFormat("dd/MM/yyyy");
+            dateStyle.DataFormat = dateFormat;
+
+            // Ghi tiêu đề
+            IRow header = sheet.CreateRow(0);
+            header.CreateCell(0).SetCellValue("Môn học");
+            header.CreateCell(1).SetCellValue("Khóa học");
+            header.CreateCell(2).SetCellValue("Ngày thi");
+            header.CreateCell(3).SetCellValue("Nhóm tiết");
+            header.CreateCell(4).SetCellValue("Địa điểm");
+
+            for (int i = 0; i < examSessions.Count; i++)
+            {
+                var exam = examSessions[i];
+                IRow row = sheet.CreateRow(i + 1);
+                row.CreateCell(0).SetCellValue(exam.Subject);
+                row.CreateCell(1).SetCellValue(string.Join(", ", exam.Courses));
+
+                // Ngày thi với định dạng ngày thực tế (để dùng sort/format)
+                ICell dateCell = row.CreateCell(2);
+                dateCell.SetCellValue(exam.Date);
+                dateCell.CellStyle = dateStyle;
+
+                row.CreateCell(3).SetCellValue(exam.Period.ToString());
+                row.CreateCell(4).SetCellValue(exam.Room);
+            }
+
+            // Auto fit
+            for (int col = 0; col <= 4; col++)
+                sheet.AutoSizeColumn(col);
         }
 
         private static string GetDayOfWeekName(DayOfWeek dow)
