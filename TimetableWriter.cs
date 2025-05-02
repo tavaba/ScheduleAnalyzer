@@ -2,6 +2,7 @@
 using NPOI.XSSF.UserModel;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 
@@ -9,24 +10,12 @@ namespace ScheduleAnalyzer
 {
     public class TimetableWriter
     {
-        public static void WriteResults(string outputFile, List<SubjectEndDate> subjectEndDates, List<FreeTimeSlot> freeTimeSlots, List<ExamSession> examSessions)
-        {
-            IWorkbook workbook = new XSSFWorkbook();
-            WriteSheet1(workbook, subjectEndDates);
-            WriteSheet2(workbook, freeTimeSlots);
-            WriteSheet3(workbook, examSessions); // Gọi hàm xuất lịch thi
-            using (FileStream fs = new FileStream(outputFile, FileMode.Create, FileAccess.Write))
-            {
-                workbook.Write(fs);
-            }
-        }
-
-        private static void WriteSheet1(IWorkbook workbook, List<SubjectEndDate> subjectEndDates)
+        public static void WriteEndDates(IWorkbook workbook, List<SubjectEndDate> subjectEndDates)
         {
             // Sắp xếp theo ngày kết thúc (EndDate)
             var sortedList = subjectEndDates.OrderBy(s => s.EndDate).ToList();
 
-            ISheet sheet = workbook.CreateSheet("Sheet1");
+            ISheet sheet = workbook.CreateSheet("Ngày kết thúc");
 
             // Tạo style định dạng ngày cho cột D
             ICellStyle dateStyle = workbook.CreateCellStyle();
@@ -59,13 +48,14 @@ namespace ScheduleAnalyzer
                 sheet.AutoSizeColumn(col);
         }
 
-        private static void WriteSheet2(IWorkbook workbook, List<FreeTimeSlot> freeTimeSlots)
+        public static void WriteBusynesses(IWorkbook workbook, List<FreeTimeSlot> freeTimeSlots)
         {
-            ISheet sheet = workbook.CreateSheet("Sheet2");
+            ISheet sheet = workbook.CreateSheet("Có giờ");
             IRow header = sheet.CreateRow(0);
             header.CreateCell(0).SetCellValue("Ngày");
             header.CreateCell(1).SetCellValue("Thứ");
             header.CreateCell(2).SetCellValue("Nhóm tiết");
+            DateTime today = DateTime.Today;
 
             // Xác định cột bắt đầu cho thông tin khóa học và phòng học
             var sampleSlot = freeTimeSlots.FirstOrDefault();
@@ -86,9 +76,14 @@ namespace ScheduleAnalyzer
             var groupsByDate = freeTimeSlots.GroupBy(s => s.Date).OrderBy(g => g.Key);
             foreach (var group in groupsByDate)
             {
+                //Không hiển thị những ngày đã qua
+                if (group.First().Date < DateTime.Today)
+                    continue;
+
                 int startRow = rowIdx;
                 foreach (var slot in group.OrderBy(s => s.PeriodGroup))
                 {
+
                     IRow row = sheet.CreateRow(rowIdx++);
                     if (slot.PeriodGroup == group.Min(s => s.PeriodGroup))
                     {
@@ -101,9 +96,18 @@ namespace ScheduleAnalyzer
                     {
                         row.CreateCell(colIndex++).SetCellValue(free ? "" : "X");
                     }
-                    foreach (var free in slot.RoomFree.Values)
+
+                    //Đánh dấu "X" nếu có lớp học
+                    //foreach (var free in slot.RoomFree.Values)
+                    //{
+                    //    row.CreateCell(colIndex++).SetCellValue(free ? "" : "X");
+                    //}
+
+
+                    //Ghi tên lớp học phần thay vì đơn thuần đánh dấu "X"
+                    foreach (var free in slot.RoomClass.Values)
                     {
-                        row.CreateCell(colIndex++).SetCellValue(free ? "" : "X");
+                        row.CreateCell(colIndex++).SetCellValue(free);
                     }
                 }
                 // Gộp các ô ngày và thứ cho cùng 1 ngày (mỗi ngày được gộp 5 dòng)
@@ -112,7 +116,7 @@ namespace ScheduleAnalyzer
             }
         }
 
-        private static void WriteSheet3(IWorkbook workbook, List<ExamSession> examSessions)
+        public static void WriteExamSchedule(IWorkbook workbook, List<ExamSession> examSessions)
         {
             ISheet sheet = workbook.CreateSheet("Lịch thi");
 

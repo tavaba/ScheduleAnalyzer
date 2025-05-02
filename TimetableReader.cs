@@ -1,7 +1,9 @@
-﻿using NPOI.SS.UserModel;
+﻿using NPOI.HSSF.UserModel;
+using NPOI.SS.UserModel;
 using NPOI.XSSF.UserModel;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -11,91 +13,120 @@ namespace ScheduleAnalyzer
 {
     public class TimetableReader
     {
-        public static List<ClassSession> ReadSchedule(string filePath)
+        public static List<ClassSession> ReadSchedules(string inputFilePaths)
+        {
+            var result = new List<ClassSession>();
+
+            // Tách các đường dẫn từ chuỗi input (mỗi đường dẫn nằm trong dấu ngoặc kép)
+            var paths = Regex.Matches(inputFilePaths, "\"([^\"]+)\"")
+                             .Cast<Match>()
+                             .Select(m => m.Groups[1].Value)
+                             .ToList();
+
+            foreach (var path in paths)
+            {
+                var sessions = ReadSchedule(path);
+                result.AddRange(sessions);
+            }
+
+            return result;
+        }
+        private static List<ClassSession> ReadSchedule(string filePath)
         {
             var sessions = new List<ClassSession>();
-            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read))
-            {
-                IWorkbook workbook = new XSSFWorkbook(fs);
-                for (int s = 0; s < workbook.NumberOfSheets; s++)
-                {
-                    ISheet sheet = workbook.GetSheetAt(s);
-                    if (sheet == null) continue;
-                    int headerRowIndex = FindHeaderRow(sheet);
-                    if (headerRowIndex == -1) continue;
-                    int rowIndex = headerRowIndex + 1;
-                    while (rowIndex <= sheet.LastRowNum)
-                    {
-                        IRow row = sheet.GetRow(rowIndex);
-                        if (row == null || IsRowEmpty(row)) break;
+            IWorkbook workbook;
 
-                        // Lấy tên lớp học phần từ cột E (index 4)
-                        string className = GetMergedCellValue(sheet, rowIndex, 4);
-                        if (string.IsNullOrWhiteSpace(className))
+            // Phân biệt định dạng file theo phần mở rộng
+            if (filePath.EndsWith(".xlsx"))
+            {
+                FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                workbook = new XSSFWorkbook(fs);
+                fs.Close();
+            }
+            else if (filePath.EndsWith(".xls"))
+            {
+                workbook = WorkbookFactory.Create(filePath);
+            }
+            else
+            {
+                throw new NotSupportedException("Định dạng tập tin không được hỗ trợ: " + filePath);
+            }
+
+            for (int s = 0; s < workbook.NumberOfSheets; s++)
+            {
+                ISheet sheet = workbook.GetSheetAt(s);
+                if (sheet == null) continue;
+                int headerRowIndex = FindHeaderRow(sheet);
+                if (headerRowIndex == -1)
+                    throw new Exception("Không tìm thấy dòng tiêu đề: " + sheet.SheetName);
+                int rowIndex = headerRowIndex + 1;
+                while (rowIndex <= sheet.LastRowNum)
+                {
+                    IRow row = sheet.GetRow(rowIndex);
+                    if (row == null || IsRowEmpty(row)) break;
+
+                    // Lấy tên lớp học phần từ cột E (index 4)
+                    string className = GetMergedCellValue(sheet, rowIndex, 4);
+                    if (string.IsNullOrWhiteSpace(className))
+                    {
+                        rowIndex++;
+                        continue;
+                    }
+
+                    // Trích xuất tên môn học và danh sách khóa học
+                    var classNameInfo = ParseClassName(className);
+                    if (classNameInfo == null)
+                    {
+                        throw new Exception("Invalid class name: " + className);
+
+                    }
+
+                    // Tìm số dòng được gộp cho lớp học phần (cột E)
+                    int mergedRowCount = GetMergedRowCount(sheet, rowIndex, 4);
+
+                    List<Lesson> lessons = new List<Lesson>();
+                    int count = 0;
+                    do
+                    {
+                        // Đọc ngày bắt đầu và kết thúc cho giai đoạn này
+                        string startDateStr = GetMergedCellValue(sheet, rowIndex + count, 10); // cột K
+                        string endDateStr = GetMergedCellValue(sheet, rowIndex + count, 11);   // cột L
+                        DateTime.TryParseExact(startDateStr, "dd/MM/yy", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime startDate);
+                        DateTime.TryParseExact(endDateStr, "dd/MM/yy", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime endDate);
+
+                        int subMergedRowCount = GetMergedRowCount(sheet, rowIndex + count, 10); // số dòng cho giai đoạn này
+
+                        for (int i = 0; i < subMergedRowCount; i++)
                         {
-                            rowIndex++;
-                            continue;
+                            IRow r = sheet.GetRow(rowIndex + count + i);
+                            if (r == null) continue;
+
+                            string dayStr = GetCellString(r, 7);      // Cột H: thứ trong tuần
+                            string sessionStr = GetCellString(r, 8);  // Cột I: ca học
+                            string room = GetCellString(r, 9);        // Cột J: phòng
+                            Lesson lesson = new Lesson
+                            {
+                                DayOfWeek = ParseDayOfWeek(dayStr),
+                                Room = room,
+                                StartDate = startDate,
+                                EndDate = endDate
+                            };
+                            (lesson.StartPeriod, lesson.EndPeriod) = ParseSession(sessionStr);
+                            lessons.Add(lesson);
                         }
 
-                        // Trích xuất tên môn học và danh sách khóa học
-                        var classNameInfo = ParseClassName(className);
-                        if(classNameInfo == null)
-                        {
-                            throw new Exception("Invalid class name: " + className);
-                            
-                        }    
+                        count += subMergedRowCount;
 
-                        // Tìm số dòng được gộp cho lớp học phần (cột E)
-                        int mergedRowCount = GetMergedRowCount(sheet, rowIndex, 4);
+                    } while (count < mergedRowCount);
 
-                        List<Lesson> lessons = new List<Lesson>();
-                        int count = 0;
-                        do
-                        {
-                            // Đọc ngày bắt đầu và kết thúc cho giai đoạn này
-                            string startDateStr = GetMergedCellValue(sheet, rowIndex + count, 10); // cột K
-                            string endDateStr = GetMergedCellValue(sheet, rowIndex + count, 11);   // cột L
-                            DateTime.TryParseExact(startDateStr, "dd/MM/yy", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime startDate);
-                            DateTime.TryParseExact(endDateStr, "dd/MM/yy", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime endDate);
-
-                            int subMergedRowCount = GetMergedRowCount(sheet, rowIndex + count, 10); // số dòng cho giai đoạn này
-
-                            for (int i = 0; i < subMergedRowCount; i++)
-                            {
-                                IRow r = sheet.GetRow(rowIndex + count + i);
-                                if (r == null) continue;
-
-                                string dayStr = GetCellString(r, 7);      // Cột H: thứ trong tuần
-                                string sessionStr = GetCellString(r, 8);  // Cột I: ca học
-                                string room = GetCellString(r, 9);        // Cột J: phòng
-
-                                if (!string.IsNullOrEmpty(dayStr) && !string.IsNullOrEmpty(sessionStr))
-                                {
-                                    Lesson lesson = new Lesson
-                                    {
-                                        DayOfWeek = ParseDayOfWeek(dayStr),
-                                        Room = room,
-                                        StartDate = startDate,
-                                        EndDate = endDate
-                                    };
-                                    (lesson.StartPeriod, lesson.EndPeriod) = ParseSession(sessionStr);
-                                    lessons.Add(lesson);
-                                }
-                            }
-
-                            count += subMergedRowCount;
-
-                        } while (count < mergedRowCount);
-
-                        sessions.Add(new ClassSession
-                        {
-                            ClassName = className,
-                            SubjectName = classNameInfo.SubjectName,
-                            CourseCodes = classNameInfo.CourseCodes,
-                            Lessons = lessons
-                        });
-                        rowIndex += mergedRowCount;
-                    }
+                    sessions.Add(new ClassSession
+                    {
+                        ClassName = className,
+                        SubjectName = classNameInfo.SubjectName,
+                        CourseCodes = classNameInfo.CourseCodes,
+                        Lessons = lessons
+                    });
+                    rowIndex += mergedRowCount;
                 }
             }
             return sessions;

@@ -92,6 +92,11 @@ namespace ScheduleAnalyzer
         /// Với mỗi phòng học, true nếu rảnh, false nếu bận
         /// </summary>
         public Dictionary<string, bool> RoomFree { get; set; } = new Dictionary<string, bool>();
+
+        /// <summary>
+        /// Với mỗi phòng học, nếu bận thì cho biết tên lớp học phần
+        /// </summary>
+        public Dictionary<string, string> RoomClass { get; set; } = new Dictionary<string, string>();
     }
 
     public class ExamSession
