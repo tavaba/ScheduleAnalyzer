@@ -135,24 +135,19 @@ namespace ScheduleAnalyzer
             List<SubjectEndDate> subjectEndDates,
             List<FreeTimeSlot> freeSlots)
         {
+            var freeSlotForExams = new List<FreeTimeSlot>(freeSlots);
             var result = new List<ExamSession>();
 
-            // Bước 1: Xác định danh sách tất cả các khóa học và phòng học
             var allCourses = sessions.SelectMany(s => s.CourseCodes).Distinct().ToList();
             var allRooms = sessions.SelectMany(s => s.Lessons).Select(l => l.Room).Distinct().ToList();
 
-            // Bước 2: Xây dựng danh sách các ngày thi hợp lệ (từ thứ Hai đến thứ Sáu)
+            //Mở rộng khoảng thời gian để sắp lịch thi
             var examDates = Enumerable.Range(0, (examEndDate - examStartDate).Days + 1)
                 .Select(offset => examStartDate.AddDays(offset))
                 .Where(d => d.DayOfWeek >= DayOfWeek.Monday && d.DayOfWeek <= DayOfWeek.Friday)
                 .ToList();
-
-            // Bước 3: Xây dựng danh sách các nhóm tiết (PeriodGroup: 1 -> 5)
             var periodGroups = Enumerable.Range(1, 5).ToList();
-
-            // Bước 4: Mở rộng freeSlots đến hết ngày thi (giả sử các ngày mới là trống hoàn toàn)
-            var existingDates = freeSlots.Select(f => f.Date).Distinct().ToHashSet();
-
+            var existingDates = freeSlotForExams.Select(f => f.Date).Distinct().ToHashSet();
             foreach (var date in examDates)
             {
                 if (!existingDates.Contains(date))
@@ -166,12 +161,14 @@ namespace ScheduleAnalyzer
                             CourseFree = allCourses.ToDictionary(c => c, c => true),
                             RoomFree = allRooms.ToDictionary(r => r, r => true)
                         };
-                        freeSlots.Add(newSlot);
+                        freeSlotForExams.Add(newSlot);
                     }
                 }
             }
 
-            // Bước 5: Sắp xếp danh sách môn học theo ngày kết thúc
+            // Ghi lại các khóa học đã thi trong ngày nào
+            var courseExamDates = new HashSet<(string course, DateTime date)>();
+
             var sortedSubjects = subjectEndDates.OrderBy(s => s.EndDate).ToList();
 
             foreach (var subject in sortedSubjects)
@@ -181,13 +178,14 @@ namespace ScheduleAnalyzer
 
                 var validExamStartDate = subject.EndDate.AddDays(2);
 
-                var possibleSlots = freeSlots
+                var possibleSlots = freeSlotForExams
                     .Where(f =>
                         f.Date >= validExamStartDate &&
                         f.Date >= examStartDate &&
                         f.Date <= examEndDate &&
                         f.Date.DayOfWeek != DayOfWeek.Saturday &&
-                        f.Date.DayOfWeek != DayOfWeek.Sunday)
+                        f.Date.DayOfWeek != DayOfWeek.Sunday&&
+                        f.PeriodGroup<5)
                     .OrderBy(f => f.Date)
                     .ThenBy(f => f.PeriodGroup)
                     .ToList();
@@ -196,18 +194,27 @@ namespace ScheduleAnalyzer
 
                 foreach (var slot in possibleSlots)
                 {
+                    // RÀNG BUỘC MỚI: Kiểm tra mỗi khóa học chưa thi môn nào trong ngày này
+                    bool courseAlreadyHasExamToday = relatedClass.CourseCodes
+                        .Any(course => courseExamDates.Contains((course, slot.Date)));
+
+                    if (courseAlreadyHasExamToday)
+                        continue; // Bỏ qua slot này
+
                     bool allCoursesFree = relatedClass.CourseCodes.All(c => slot.CourseFree.ContainsKey(c) && slot.CourseFree[c]);
                     var availableRoom = slot.RoomFree.FirstOrDefault(r => r.Value);
 
                     if (allCoursesFree && !string.IsNullOrEmpty(availableRoom.Key))
                     {
-                        // Đánh dấu đã dùng
+                        // Đánh dấu slot đã được dùng
                         foreach (var c in relatedClass.CourseCodes)
+                        {
                             slot.CourseFree[c] = false;
+                            courseExamDates.Add((c, slot.Date)); // Đánh dấu đã thi môn trong ngày
+                        }
 
                         slot.RoomFree[availableRoom.Key] = false;
 
-                        // Thêm phiên thi
                         result.Add(new ExamSession
                         {
                             Subject = subject.SubjectName,
@@ -232,11 +239,11 @@ namespace ScheduleAnalyzer
         }
 
         public static List<ExamSession> GenerateExamSchedule(
-    DateTime examStartDate,
-    DateTime examEndDate,
-    List<ClassSession> sessions,
-    List<SubjectEndDate> subjectEndDates,
-    List<FreeTimeSlot> freeSlots)
+            DateTime examStartDate,
+            DateTime examEndDate,
+            List<ClassSession> sessions,
+            List<SubjectEndDate> subjectEndDates,
+            List<FreeTimeSlot> freeSlots)
         {
             var freeSlotForExams = new List<FreeTimeSlot>(freeSlots);
             var result = new List<ExamSession>();
@@ -244,15 +251,13 @@ namespace ScheduleAnalyzer
             var allCourses = sessions.SelectMany(s => s.CourseCodes).Distinct().ToList();
             var allRooms = sessions.SelectMany(s => s.Lessons).Select(l => l.Room).Distinct().ToList();
 
+            //Mở rộng khoảng thời gian để sắp lịch thi
             var examDates = Enumerable.Range(0, (examEndDate - examStartDate).Days + 1)
                 .Select(offset => examStartDate.AddDays(offset))
                 .Where(d => d.DayOfWeek >= DayOfWeek.Monday && d.DayOfWeek <= DayOfWeek.Friday)
                 .ToList();
-
             var periodGroups = Enumerable.Range(1, 5).ToList();
-
             var existingDates = freeSlotForExams.Select(f => f.Date).Distinct().ToHashSet();
-
             foreach (var date in examDates)
             {
                 if (!existingDates.Contains(date))
@@ -271,7 +276,7 @@ namespace ScheduleAnalyzer
                 }
             }
 
-            // NEW: Ghi lại các khóa học đã thi trong ngày nào
+            // Ghi lại các khóa học đã thi trong ngày nào
             var courseExamDates = new HashSet<(string course, DateTime date)>();
 
             var sortedSubjects = subjectEndDates.OrderBy(s => s.EndDate).ToList();
@@ -289,8 +294,8 @@ namespace ScheduleAnalyzer
                         f.Date >= examStartDate &&
                         f.Date <= examEndDate &&
                         f.Date.DayOfWeek != DayOfWeek.Saturday &&
-                        f.Date.DayOfWeek != DayOfWeek.Sunday&&
-                        f.PeriodGroup<5)
+                        f.Date.DayOfWeek != DayOfWeek.Sunday &&
+                        f.PeriodGroup < 5)
                     .OrderBy(f => f.Date)
                     .ThenBy(f => f.PeriodGroup)
                     .ToList();

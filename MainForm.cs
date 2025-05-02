@@ -20,8 +20,8 @@ namespace ScheduleAnalyzer
             OpenFileDialog dlg = new OpenFileDialog
             {
                 Filter = "Excel files (*.xlsx;*.xls)|*.xlsx;*.xls",
-                Title = "Chọn một hoặc nhiều tập tin thời khóa biểu",
-                Multiselect = true
+                Title = "Chọn tập tin thời khóa biểu",
+                Multiselect = false
             };
             if (dlg.ShowDialog() == DialogResult.OK)
             {
