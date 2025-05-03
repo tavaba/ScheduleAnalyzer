@@ -8,15 +8,31 @@ namespace ScheduleAnalyzer
     public class TimetableProcessor
     {
         // Tính ngày kết thúc của mỗi môn học (subject) dựa trên các lớp học phần có cùng tên môn học.
-        public static List<SubjectEndDate> GetSubjectEndDates(List<ClassSession> sessions)
+        public static List<SubjectEndDate> GetSubjectEndDates(List<ClassSession> sessions, bool oneSubjectForAll)
         {
             var result = new List<SubjectEndDate>();
 
-            // Nhóm các lớp học phần theo tên môn học
-            var groups = sessions.GroupBy(s => s.SubjectName);
+            // Nhóm các lớp học phần theo tên môn học HOẶC tên môn học có kèm nhóm khóa học
+            var groups = oneSubjectForAll ? sessions.GroupBy(s => s.SubjectName) : sessions.GroupBy(s => s.SubjectWithCourses);
 
             foreach (var group in groups)
             {
+                //Xác định thông tin chung của mỗi nhóm
+                string subjectName = group.First().SubjectName;
+                List<string> courseCodes = new List<string>(group.First().CourseCodes);
+                if (oneSubjectForAll)
+                {
+                    foreach(var session in group)
+                    {
+                        foreach(var code in session.CourseCodes)
+                        {
+                            if (!courseCodes.Contains(code))
+                                courseCodes.Add(code);
+                        }    
+                    }    
+                }
+
+                //Bắt đầu xác định ngày kết thúc của mỗi nhóm
                 DateTime latestDate = DateTime.MinValue;
 
                 foreach (var session in group)
@@ -41,7 +57,8 @@ namespace ScheduleAnalyzer
                 {
                     result.Add(new SubjectEndDate
                     {
-                        SubjectName = group.Key,
+                        SubjectName = subjectName,
+                        CourseCodes = courseCodes,
                         EndDate = latestDate
                     });
                 }
@@ -251,42 +268,40 @@ namespace ScheduleAnalyzer
             var allCourses = sessions.SelectMany(s => s.CourseCodes).Distinct().ToList();
             var allRooms = sessions.SelectMany(s => s.Lessons).Select(l => l.Room).Distinct().ToList();
 
-            //Mở rộng khoảng thời gian để sắp lịch thi
-            var examDates = Enumerable.Range(0, (examEndDate - examStartDate).Days + 1)
-                .Select(offset => examStartDate.AddDays(offset))
-                .Where(d => d.DayOfWeek >= DayOfWeek.Monday && d.DayOfWeek <= DayOfWeek.Friday)
+            //Mở rộng khoảng thời gian (tập các Slot) để sắp lịch thi
+            DateTime maxClassDate = sessions
+                .SelectMany(s => s.Lessons)
+                .Max(l => l.EndDate);
+            if (examEndDate <= maxClassDate)
+                throw new Exception("Ngày kết thúc thi phải sau ngày kết thúc học!");
+            var additionalDates = Enumerable.Range(1, (examEndDate - maxClassDate).Days)
+                .Select(offset => maxClassDate.AddDays(offset))
                 .ToList();
             var periodGroups = Enumerable.Range(1, 5).ToList();
             var existingDates = freeSlotForExams.Select(f => f.Date).Distinct().ToHashSet();
-            foreach (var date in examDates)
+            foreach (var date in additionalDates)
             {
-                if (!existingDates.Contains(date))
+                foreach (var period in periodGroups)
                 {
-                    foreach (var period in periodGroups)
+                    var newSlot = new FreeTimeSlot
                     {
-                        var newSlot = new FreeTimeSlot
-                        {
-                            Date = date,
-                            PeriodGroup = period,
-                            CourseFree = allCourses.ToDictionary(c => c, c => true),
-                            RoomFree = allRooms.ToDictionary(r => r, r => true)
-                        };
-                        freeSlotForExams.Add(newSlot);
-                    }
+                        Date = date,
+                        PeriodGroup = period,
+                        CourseFree = allCourses.ToDictionary(c => c, c => true),
+                        RoomFree = allRooms.ToDictionary(r => r, r => true)
+                    };
+                    freeSlotForExams.Add(newSlot);
                 }
             }
 
             // Ghi lại các khóa học đã thi trong ngày nào
             var courseExamDates = new HashSet<(string course, DateTime date)>();
 
-            var sortedSubjects = subjectEndDates.OrderBy(s => s.EndDate).ToList();
+            var sortedExams = subjectEndDates.OrderBy(s => s.EndDate).ToList();
 
-            foreach (var subject in sortedSubjects)
+            foreach (var exam in sortedExams)
             {
-                var relatedClass = sessions.FirstOrDefault(c => c.SubjectName == subject.SubjectName);
-                if (relatedClass == null) continue;
-
-                var validExamStartDate = subject.EndDate.AddDays(2);
+                var validExamStartDate = exam.EndDate.AddDays(2);
 
                 var possibleSlots = freeSlotForExams
                     .Where(f =>
@@ -304,20 +319,20 @@ namespace ScheduleAnalyzer
 
                 foreach (var slot in possibleSlots)
                 {
-                    // RÀNG BUỘC MỚI: Kiểm tra mỗi khóa học chưa thi môn nào trong ngày này
-                    bool courseAlreadyHasExamToday = relatedClass.CourseCodes
+                    // RÀNG BUỘC: Kiểm tra mỗi khóa học chưa thi môn nào trong ngày này
+                    bool courseAlreadyHasExamToday = exam.CourseCodes
                         .Any(course => courseExamDates.Contains((course, slot.Date)));
 
                     if (courseAlreadyHasExamToday)
                         continue; // Bỏ qua slot này
 
-                    bool allCoursesFree = relatedClass.CourseCodes.All(c => slot.CourseFree.ContainsKey(c) && slot.CourseFree[c]);
+                    bool allCoursesFree = exam.CourseCodes.All(c => slot.CourseFree.ContainsKey(c) && slot.CourseFree[c]);
                     var availableRoom = slot.RoomFree.FirstOrDefault(r => r.Value);
 
                     if (allCoursesFree && !string.IsNullOrEmpty(availableRoom.Key))
                     {
                         // Đánh dấu slot đã được dùng
-                        foreach (var c in relatedClass.CourseCodes)
+                        foreach (var c in exam.CourseCodes)
                         {
                             slot.CourseFree[c] = false;
                             courseExamDates.Add((c, slot.Date)); // Đánh dấu đã thi môn trong ngày
@@ -327,8 +342,8 @@ namespace ScheduleAnalyzer
 
                         result.Add(new ExamSession
                         {
-                            Subject = subject.SubjectName,
-                            Courses = new List<string>(relatedClass.CourseCodes),
+                            Subject = exam.SubjectName,
+                            Courses = new List<string>(exam.CourseCodes),
                             Date = slot.Date,
                             Period = slot.PeriodGroup,
                             Room = availableRoom.Key
@@ -341,7 +356,7 @@ namespace ScheduleAnalyzer
 
                 if (!scheduled)
                 {
-                    throw new Exception($"Không thể xếp lịch thi cho môn '{subject.SubjectName}'.");
+                    throw new Exception($"Không thể xếp lịch thi cho môn '{exam.SubjectName}'.");
                 }
             }
 

@@ -22,6 +22,14 @@ namespace ScheduleAnalyzer
         public string SubjectName { get; set; } = "";
 
         /// <summary>
+        /// Tên môn học kết hợp với các khóa học.
+        /// Ý tưởng ở đây là cùng một môn học nhưng giảng dạy cho các NHÓM KHÓA HỌC khác nhau
+        /// thì có thể kết thúc vào các đợt khác nhau, có thể tổ chức thi vào các đợt khác nhau
+        /// cho nên có thể coi như hai "môn" khác nhau
+        /// </summary>
+        public string SubjectWithCourses { get; set; } = "";
+
+        /// <summary>
         /// Danh sách các khóa học tham gia môn học. Ví dụ: [ "H32", "CTL01" ]
         /// </summary>
         public List<string> CourseCodes { get; set; } = new List<string>();
@@ -69,6 +77,7 @@ namespace ScheduleAnalyzer
     {
         public string SubjectName { get; set; } = "";
         public DateTime EndDate { get; set; }
+        public List<string> CourseCodes { get; set; }
     }
 
     public class FreeTimeSlot

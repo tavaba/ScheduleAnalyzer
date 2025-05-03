@@ -124,6 +124,7 @@ namespace ScheduleAnalyzer
                         ClassName = className,
                         SubjectName = classNameInfo.SubjectName,
                         CourseCodes = classNameInfo.CourseCodes,
+                        SubjectWithCourses = classNameInfo.SubjectName + "-" + String.Join("-", classNameInfo.CourseCodes),
                         Lessons = lessons
                     });
                     rowIndex += mergedRowCount;

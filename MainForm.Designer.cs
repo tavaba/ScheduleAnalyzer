@@ -36,6 +36,8 @@ namespace ScheduleAnalyzer
             dtpExamStartDate = new DateTimePicker();
             lblEnd = new Label();
             dtpExamEndDate = new DateTimePicker();
+            chkOneSubjectForAll = new CheckBox();
+            chkShowBusynessFromExamStartDate = new CheckBox();
             SuspendLayout();
             // 
             // lblInput
@@ -53,7 +55,7 @@ namespace ScheduleAnalyzer
             txtInputPath.Name = "txtInputPath";
             txtInputPath.Size = new Size(387, 23);
             txtInputPath.TabIndex = 1;
-            txtInputPath.Text = "D:\\Công việc\\Xây dựng lịc thi KTMM\\Thời khóa biểu.xlsx";
+            txtInputPath.Text = "\"D:\\thoi-khoa-bieu.xlsx\"";
             // 
             // btnBrowseInput
             // 
@@ -79,7 +81,7 @@ namespace ScheduleAnalyzer
             txtOutputPath.Name = "txtOutputPath";
             txtOutputPath.Size = new Size(387, 23);
             txtOutputPath.TabIndex = 4;
-            txtOutputPath.Text = "D:\\tkb-h.xlsx";
+            txtOutputPath.Text = "D:\\lich-thi.xlsx";
             // 
             // btnBrowseOutput
             // 
@@ -92,7 +94,7 @@ namespace ScheduleAnalyzer
             // 
             // btnAnalyze
             // 
-            btnAnalyze.Location = new Point(143, 134);
+            btnAnalyze.Location = new Point(143, 200);
             btnAnalyze.Name = "btnAnalyze";
             btnAnalyze.Size = new Size(100, 30);
             btnAnalyze.TabIndex = 6;
@@ -101,7 +103,7 @@ namespace ScheduleAnalyzer
             // 
             // lblStart
             // 
-            lblStart.Location = new Point(20, 76);
+            lblStart.Location = new Point(12, 82);
             lblStart.Name = "lblStart";
             lblStart.Size = new Size(100, 23);
             lblStart.TabIndex = 6;
@@ -116,7 +118,7 @@ namespace ScheduleAnalyzer
             // 
             // lblEnd
             // 
-            lblEnd.Location = new Point(20, 111);
+            lblEnd.Location = new Point(12, 111);
             lblEnd.Name = "lblEnd";
             lblEnd.Size = new Size(100, 23);
             lblEnd.TabIndex = 8;
@@ -129,9 +131,33 @@ namespace ScheduleAnalyzer
             dtpExamEndDate.Size = new Size(200, 23);
             dtpExamEndDate.TabIndex = 9;
             // 
+            // chkOneSubjectForAll
+            // 
+            chkOneSubjectForAll.AutoSize = true;
+            chkOneSubjectForAll.Location = new Point(143, 134);
+            chkOneSubjectForAll.Name = "chkOneSubjectForAll";
+            chkOneSubjectForAll.Size = new Size(207, 19);
+            chkOneSubjectForAll.TabIndex = 10;
+            chkOneSubjectForAll.Text = "Một môn cho tất cả các đối tượng";
+            chkOneSubjectForAll.UseVisualStyleBackColor = true;
+            // 
+            // chkShowBusynessFromExamStartDate
+            // 
+            chkShowBusynessFromExamStartDate.AutoSize = true;
+            chkShowBusynessFromExamStartDate.Checked = true;
+            chkShowBusynessFromExamStartDate.CheckState = CheckState.Checked;
+            chkShowBusynessFromExamStartDate.Location = new Point(143, 159);
+            chkShowBusynessFromExamStartDate.Name = "chkShowBusynessFromExamStartDate";
+            chkShowBusynessFromExamStartDate.Size = new Size(398, 19);
+            chkShowBusynessFromExamStartDate.TabIndex = 10;
+            chkShowBusynessFromExamStartDate.Text = "Hiển thị thông tin giờ rỗi của khóa học, phòng học từ ngày bắt đầu thi";
+            chkShowBusynessFromExamStartDate.UseVisualStyleBackColor = true;
+            // 
             // MainForm
             // 
-            ClientSize = new Size(600, 173);
+            ClientSize = new Size(600, 242);
+            Controls.Add(chkShowBusynessFromExamStartDate);
+            Controls.Add(chkOneSubjectForAll);
             Controls.Add(lblInput);
             Controls.Add(txtInputPath);
             Controls.Add(btnBrowseInput);
@@ -144,6 +170,7 @@ namespace ScheduleAnalyzer
             Controls.Add(dtpExamEndDate);
             Controls.Add(btnAnalyze);
             FormBorderStyle = FormBorderStyle.FixedSingle;
+            MaximizeBox = false;
             Name = "MainForm";
             Text = "Phân tích thời khóa biểu KTMM";
             ResumeLayout(false);
@@ -151,5 +178,7 @@ namespace ScheduleAnalyzer
         }
         private Label lblStart;
         private Label lblEnd;
+        private CheckBox chkOneSubjectForAll;
+        private CheckBox chkShowBusynessFromExamStartDate;
     }
 }

@@ -25,9 +25,9 @@ namespace ScheduleAnalyzer
             // Ghi tiêu đề
             IRow header = sheet.CreateRow(0);
             header.CreateCell(0).SetCellValue("Tên môn học");
-            header.CreateCell(1).SetCellValue("Ngày kết thúc");
-            header.CreateCell(2).SetCellValue("Thứ");
-            header.CreateCell(3).SetCellValue("End Date");
+            header.CreateCell(1).SetCellValue("Khóa");
+            header.CreateCell(2).SetCellValue("Ngày kết thúc");
+            header.CreateCell(3).SetCellValue("Thứ");
 
             // Ghi dữ liệu
             for (int i = 0; i < sortedList.Count; i++)
@@ -35,12 +35,12 @@ namespace ScheduleAnalyzer
                 var data = sortedList[i];
                 IRow row = sheet.CreateRow(i + 1);
                 row.CreateCell(0).SetCellValue(data.SubjectName);
-                row.CreateCell(1).SetCellValue(data.EndDate.ToString("dd/MM/yyyy")); // dạng chuỗi
-                row.CreateCell(2).SetCellValue(GetDayOfWeekName(data.EndDate.DayOfWeek)); // Thứ
-
-                ICell cellDate = row.CreateCell(3); // cột D
+                row.CreateCell(1).SetCellValue(string.Join(",", data.CourseCodes));
+                ICell cellDate = row.CreateCell(2);
                 cellDate.SetCellValue(data.EndDate);
                 cellDate.CellStyle = dateStyle;
+                row.CreateCell(3).SetCellValue(GetDayOfWeekName(data.EndDate.DayOfWeek)); // Thứ
+
             }
 
             // Tự động điều chỉnh độ rộng cột
@@ -48,7 +48,7 @@ namespace ScheduleAnalyzer
                 sheet.AutoSizeColumn(col);
         }
 
-        public static void WriteBusynesses(IWorkbook workbook, List<FreeTimeSlot> freeTimeSlots)
+        public static void WriteBusynesses(IWorkbook workbook, List<FreeTimeSlot> freeTimeSlots, DateTime? fromDate=null)
         {
             ISheet sheet = workbook.CreateSheet("Có giờ");
             IRow header = sheet.CreateRow(0);
@@ -76,8 +76,8 @@ namespace ScheduleAnalyzer
             var groupsByDate = freeTimeSlots.GroupBy(s => s.Date).OrderBy(g => g.Key);
             foreach (var group in groupsByDate)
             {
-                //Không hiển thị những ngày đã qua
-                if (group.First().Date < DateTime.Today)
+                //Chỉ hiển thị thông tin tính từ ngày dự kiến bắt đầu thi (nếu có yêu cầu)
+                if (fromDate!=null && group.First().Date < fromDate)
                     continue;
 
                 int startRow = rowIdx;

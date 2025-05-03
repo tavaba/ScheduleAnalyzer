@@ -21,7 +21,7 @@ namespace ScheduleAnalyzer
             {
                 Filter = "Excel files (*.xlsx;*.xls)|*.xlsx;*.xls",
                 Title = "Chọn tập tin thời khóa biểu",
-                Multiselect = false
+                Multiselect = true
             };
             if (dlg.ShowDialog() == DialogResult.OK)
             {
@@ -52,8 +52,12 @@ namespace ScheduleAnalyzer
                 return;
             }
 
+            //Lấy các thông tin khác từ giao diện
             string input = txtInputPath.Text.Trim();
             string output = txtOutputPath.Text.Trim();
+            bool oneSubjectForAll = chkOneSubjectForAll.Checked;
+            DateTime? busynessStartDate = chkShowBusynessFromExamStartDate.Checked ? examStartDate : null;
+
 
             try
             {
@@ -61,12 +65,12 @@ namespace ScheduleAnalyzer
                 var sessions = TimetableReader.ReadSchedules(input);
 
                 //Ngày kết thúc các môn học
-                var subjectEndDates = TimetableProcessor.GetSubjectEndDates(sessions);
+                var subjectEndDates = TimetableProcessor.GetSubjectEndDates(sessions, oneSubjectForAll);
                 TimetableWriter.WriteEndDates(workbook, subjectEndDates);
 
                 //Thời gian rỗi của các khóa học và phòng học
                 var freeTimeSlots = TimetableProcessor.GetFreeTimeSlots(sessions);
-                TimetableWriter.WriteBusynesses(workbook, freeTimeSlots);
+                TimetableWriter.WriteBusynesses(workbook, freeTimeSlots, busynessStartDate);
 
                 //Lịch thi
                 var examSessions = TimetableProcessor.GenerateExamSchedule(examStartDate, examEndDate, sessions, subjectEndDates, freeTimeSlots);
